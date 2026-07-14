@@ -5,79 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
 
-### Changed
-
-- **`IngressGCPGateway`**: regional Gateway TLS now uses Certificate
-  Manager via ``networking.gke.io/cert-manager-certs`` instead of
-  Certificate Map / ``ManagedCertificate``.
-- Added optional ``certificate_name`` constructor argument (default
-  ``ingress-gcp-gateway-certificate``).
-
-### Removed
-
-- ``deploy__certificate.yml`` ``ManagedCertificate`` manifest (not
-  supported by the GKE Gateway controller).
-
-## [0.0.2] - 2026-07-07
-
+## [0.0.3] - 2026-07-14
 ### Added
-
-- **`ApiGatewayServerCertificate`**: NGINX gateway with operator-managed TLS
-  certificates mounted from a Kubernetes Secret via
-  ``PumpwoodDeploySecretFile``.
-- **`tls_certificate` CLI module** (`python -m
-  pumpwood_deploy_api_gateway.tls_certificate`):
-  - ``generate-csr`` — create ``certificate.key`` and ``request.csr`` for
-    external CAs (Gandi, corporate PKI).
-  - ``build-chain`` — assemble ``certificate.crt`` PEM chain for NGINX.
-- **`deploy__nginx_server_certificate.yml`**: Deployment manifest for the
-  ``nginx-ssl-server-certificate`` image.
-- **`pvc__nginx_certbot_letsencrypt.yml`**: PersistentVolumeClaim for
-  Certbot / Let's Encrypt certificate storage.
-- **`certs/`** directory with ``README.md``, ``.gitkeep``, and
-  ``.gitignore`` rules to keep private TLS material out of version control.
-
-### Changed
-
-- **`ApiGatewayCertbot`**: mounts the Let's Encrypt PVC at
-  ``/etc/letsencrypt`` and registers manifest
-  ``nginx_certbot_gateway__letsencrypt_pvc``.
-- **`README.md`**: added Option C (Gandi / external CA), configuration
-  reference for ``ApiGatewayServerCertificate``, and
-  ``API_GATEWAY_SSL_SERVER`` environment variable.
-- **Module docstrings**: updated package and deploy module docs for the
-  third ingress variant.
-
-### Removed
-
-- No removes.
-
-## [0.0.1] - 2026-06-16
-
-### Added
-
-- Initial satellite package for Pumpwood NGINX API gateway deployments on
+- Initial satellite package for Pumpwood GKE Gateway ingress on
   Kubernetes, extracted from the monolithic ``pumpwood-deploy`` package.
-- **`ApiGatewayCertbot`**: NGINX with Let's Encrypt HTTPS termination and
-  external or internal LoadBalancer Service.
-- **`ApiGatewayNoCertificate`**: HTTP-only NGINX when TLS is handled
-  upstream (AWS ALB, GCP LB, etc.). Replaces ``CORSTerminaton`` from
-  ``pumpwood_deploy.microservices.api_gateway.deploy``.
-- Kubernetes resource templates:
-  - ``deploy__nginx_certbot.yml``
-  - ``deploy__nginx_no_ssl.yml``
-  - ``service__external.yml``
-  - ``service__internal.yml``
+- **`IngressGCPGateway`**: regional Gateway API ingress with TLS
+  termination via Certificate Manager
+  (``networking.gke.io/cert-manager-certs``) and HTTP-to-HTTPS redirect
+  on the GKE L7 regional external managed load balancer.
+- **`create_infrastructure`** class method: creates the regional
+  managed proxy subnet, enables Gateway API on the GKE cluster, and
+  provisions a regional Google-managed Certificate Manager certificate
+  (DNS authorization + CNAME instructions).
+- **`check_infrastructure`** class method: describes certificate
+  status until ``ACTIVE``.
+- Kubernetes resource template ``deploy__gateway.yml``: Gateway,
+  redirect HTTPRoute, app HTTPRoute, and ``HealthCheckPolicy``.
+- Bash infrastructure scripts:
+  - ``bash__create_proxy-subnet.bash``
+  - ``bash__allow_gateway_k8s_api.bash``
+  - ``bash__create_certificate-manager.bash``
+  - ``bash__check_certificate-manager.bash``
+- Optional ``certificate_name`` constructor argument (default
+  ``ingress-gcp-gateway-certificate``).
 - Project scaffolding: ``build.sh``, ``pyproject.toml``,
   ``README.md``, ``LICENSE``, and generated API documentation under
   ``docs/``.
 
-### Changed
 
+### Changed
 - No changes.
 
-### Removed
 
+### Removed
 - No removes.
