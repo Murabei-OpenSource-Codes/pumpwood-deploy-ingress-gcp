@@ -91,7 +91,7 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
                 server_name="app.example.com",
                 public_ip_name="pumpwood-gateway-ip",
                 target_service="apigateway-nginx",
-                certificate_name="ingress-gcp-gateway-certificate",
+                certificate_name="gateway-certificate",
             ))
         ```
     """
@@ -114,7 +114,7 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
             certificate_name (str):
                 Regional Certificate Manager certificate name already
                 created in GCP. Defaults to
-                ``ingress-gcp-gateway-certificate``.
+                ``gateway-certificate``.
             health_check_path (str):
                 HTTP path for the Gateway health check policy.
                 Defaults to ``/health-check/pumpwood-auth-app/``.
@@ -175,11 +175,11 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
             dns_authorization_name (str | None):
                 GCP DNS authorization name for Certificate Manager.
                 When omitted, defaults to
-                ``ingress-gcp-gateway-dns-auth--{slugified server_name}``.
+                ``gateway-dns-auth--{slugified server_name}``.
             certificate_name (str | None):
                 Regional Certificate Manager certificate name.
                 When omitted, defaults to
-                ``ingress-gcp-gateway-certificate--{slugified server_name}``.
+                ``gateway-certificate--{slugified server_name}``.
 
         Returns:
             None:
@@ -233,7 +233,7 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
             certificate_name (str | None):
                 Regional Certificate Manager certificate name to
                 verify. When omitted, defaults to
-                ``ingress-gcp-gateway-certificate--{slugified server_name}``.
+                ``gateway-certificate--{slugified server_name}``.
 
         Returns:
             None:
@@ -266,7 +266,7 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
                 Regional Certificate Manager certificate name.
         """
         return (
-            "ingress-gcp-gateway-certificate--{server_name}")\
+            "gateway-certificate--{server_name}")\
             .format(server_name=slugify(server_name))
 
     @classmethod
@@ -282,5 +282,5 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
                 Regional Certificate Manager DNS authorization name.
         """
         return (
-            "ingress-gcp-gateway-dns-auth--{server_name}")\
+            "gateway-dns-auth--{server_name}")\
             .format(server_name=slugify(server_name))
