@@ -1,6 +1,6 @@
 [project]
 name = "pumpwood-deploy-ingress-gcp"
-version = "0.0.3"
+version = "0.0.4"
 description = "Package to assist deploy Pumpwood GKE Gateway ingress on K8s"
 readme = "README.md"
 requires-python = ">=3.6"
@@ -15,6 +15,7 @@ classifiers = [
 ]
 dependencies = [
   'pumpwood-deploy',
+  'python-slugify'
 ]
 
 [tool.poetry]

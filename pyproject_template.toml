@@ -15,6 +15,7 @@ classifiers = [
 ]
 dependencies = [
   'pumpwood-deploy',
+  'python-slugify'
 ]
 
 [tool.poetry]

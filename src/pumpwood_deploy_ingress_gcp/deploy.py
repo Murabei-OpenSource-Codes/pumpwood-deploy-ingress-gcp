@@ -15,7 +15,7 @@ Manifests are registered with ``DeployPumpWood.add_microservice`` from
 ``pumpwood-deploy``.
 """
 import subprocess
-
+from slugify import slugify
 from importlib import resources
 from pumpwood_deploy.abc import BasePumpwoodDeployMicroservice
 from pumpwood_deploy.type import PumpwoodDeploy, PumpwoodDeployDeployment
@@ -116,6 +116,9 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
                 Regional Certificate Manager certificate name already
                 created in GCP. Defaults to
                 ``ingress-gcp-gateway-certificate``.
+            health_check_path (str):
+                HTTP path for the Gateway health check policy.
+                Defaults to ``/health-check/pumpwood-auth-app/``.
         """
         self.server_name = server_name
         self.public_ip_name = public_ip_name
@@ -148,11 +151,8 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
     def create_infrastructure(
             cls, region: str, project_id: str, server_name: str,
             cluster_name: str, network_name: str = "default",
-            dns_authorization_name: str = (
-                "ingress-gcp-gateway-dns-auth"),
-            certificate_name: str = (
-                "ingress-gcp-gateway-certificate"),
-            ) -> None:
+            dns_authorization_name: str | None = None,
+            certificate_name: str | None = None) -> None:
         """Create GKE regional Gateway ingress infrastructure.
 
         Args:
@@ -168,13 +168,14 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
             network_name (str):
                 GCP network name for the Gateway ingress.
                 Defaults to ``default``.
-            dns_authorization_name (str):
-                GCP DNS authorization name for the Gateway ingress.
-                Defaults to ``ingress-gcp-gateway-dns-auth``.
-            certificate_name (str):
+            dns_authorization_name (str | None):
+                GCP DNS authorization name for Certificate Manager.
+                When omitted, defaults to
+                ``ingress-gcp-gateway-dns-auth--{slugified server_name}``.
+            certificate_name (str | None):
                 Regional Certificate Manager certificate name.
-                Defaults to ``ingress-gcp-gateway-certificate``.
-
+                When omitted, defaults to
+                ``ingress-gcp-gateway-certificate--{slugified server_name}``.
 
         Returns:
             None:
@@ -184,6 +185,15 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
             subprocess.CalledProcessError:
                 If a gcloud command exits with a non-zero status.
         """
+        if dns_authorization_name is None:
+            dns_authorization_name = (
+                "ingress-gcp-gateway-dns-auth--{server_name}")\
+                .format(server_name=slugify(server_name))
+        if certificate_name is None:
+            certificate_name = (
+                "ingress-gcp-gateway-certificate--{server_name}")\
+                .format(server_name=slugify(server_name))
+
         proxy_subnet_script = infrastructure__create_proxy_subnet.format(
             region=region,
             network_name=network_name,
@@ -206,9 +216,8 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
 
     @classmethod
     def check_infrastructure(
-            cls, region: str, project_id: str,
-            certificate_name: str = (
-                "ingress-gcp-gateway-certificate")) -> None:
+            cls, region: str, project_id: str, server_name: str,
+            certificate_name: str | None = None) -> None:
         """Check GKE regional Gateway ingress infrastructure.
 
         Args:
@@ -216,9 +225,13 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
                 GCP region for the Gateway ingress.
             project_id (str):
                 GCP project ID for the Gateway ingress.
-            certificate_name (str):
-                Regional Certificate Manager certificate name.
-                Defaults to ``ingress-gcp-gateway-certificate``.
+            server_name (str):
+                DNS hostname used to derive the default certificate
+                name when ``certificate_name`` is omitted.
+            certificate_name (str | None):
+                Regional Certificate Manager certificate name to
+                verify. When omitted, defaults to
+                ``ingress-gcp-gateway-certificate--{slugified server_name}``.
 
         Returns:
             None:
@@ -228,6 +241,11 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
             subprocess.CalledProcessError:
                 If a gcloud command exits with a non-zero status.
         """
+        if certificate_name is None:
+            certificate_name = (
+                "ingress-gcp-gateway-certificate--{server_name}")\
+                .format(server_name=slugify(server_name))
+
         check_certificate_script = (
             infrastructure__check_certificate.format(
                 region=region,
