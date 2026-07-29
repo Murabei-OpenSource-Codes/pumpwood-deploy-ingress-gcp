@@ -27,7 +27,7 @@ spec:
       # Manager cert (see create_certificates.bash).
       mode: Terminate
       options:
-        networking.gke.io/cert-manager-certs: "ingress-gcp-gateway-certificate"
+        networking.gke.io/cert-manager-certs: "{certificate_name}"
     allowedRoutes:
       kinds:
       - kind: HTTPRoute

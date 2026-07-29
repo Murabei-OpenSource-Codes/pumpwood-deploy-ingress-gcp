@@ -97,8 +97,7 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
     """
     def __init__(self, server_name: str, public_ip_name: str,
                  target_service: str = "apigateway-nginx",
-                 certificate_name: str = (
-                     "ingress-gcp-gateway-certificate"),
+                 certificate_name: str | None = None,
                  health_check_path: str = (
                      "/health-check/pumpwood-auth-app/")):
         """Initialize GKE Gateway ingress deployment configuration.
@@ -125,6 +124,11 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
         self.target_service = target_service
         self.certificate_name = certificate_name
         self.health_check_path = health_check_path
+        if certificate_name is None:
+            self.certificate_name = \
+                self.get_certificate_name(self.server_name)
+        else:
+            self.certificate_name = certificate_name
 
     def create_deployment_file(self) -> list[PumpwoodDeploy]:
         """Build Kubernetes manifests for the GKE Gateway ingress.
@@ -186,13 +190,11 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
                 If a gcloud command exits with a non-zero status.
         """
         if dns_authorization_name is None:
-            dns_authorization_name = (
-                "ingress-gcp-gateway-dns-auth--{server_name}")\
-                .format(server_name=slugify(server_name))
+            dns_authorization_name = \
+                cls.get_dns_authorization_name(server_name)
         if certificate_name is None:
-            certificate_name = (
-                "ingress-gcp-gateway-certificate--{server_name}")\
-                .format(server_name=slugify(server_name))
+            certificate_name = \
+                cls.get_certificate_name(server_name)
 
         proxy_subnet_script = infrastructure__create_proxy_subnet.format(
             region=region,
@@ -242,9 +244,7 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
                 If a gcloud command exits with a non-zero status.
         """
         if certificate_name is None:
-            certificate_name = (
-                "ingress-gcp-gateway-certificate--{server_name}")\
-                .format(server_name=slugify(server_name))
+            certificate_name = cls.get_certificate_name(server_name)
 
         check_certificate_script = (
             infrastructure__check_certificate.format(
@@ -252,3 +252,35 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
                 project_id=project_id,
                 certificate_name=certificate_name))
         _run_bash_script(check_certificate_script)
+
+    @classmethod
+    def get_certificate_name(cls, server_name: str) -> str:
+        """Get the regional Certificate Manager certificate name.
+
+        Args:
+            server_name (str):
+                DNS hostname used to derive the certificate name.
+
+        Returns:
+            str:
+                Regional Certificate Manager certificate name.
+        """
+        return (
+            "ingress-gcp-gateway-certificate--{server_name}")\
+            .format(server_name=slugify(server_name))
+
+    @classmethod
+    def get_dns_authorization_name(cls, server_name: str) -> str:
+        """Get the regional Certificate Manager DNS authorization name.
+
+        Args:
+            server_name (str):
+                DNS hostname used to derive the DNS authorization name.
+
+        Returns:
+            str:
+                Regional Certificate Manager DNS authorization name.
+        """
+        return (
+            "ingress-gcp-gateway-dns-auth--{server_name}")\
+            .format(server_name=slugify(server_name))
