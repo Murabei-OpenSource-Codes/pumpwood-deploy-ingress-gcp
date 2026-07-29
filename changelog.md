@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.0.4] - 2026-07-29
+
+### Added
+- Dependency ``python-slugify`` for default Certificate Manager resource
+  names derived from ``server_name``.
+
+### Changed
+- ``IngressGCPGateway.create_infrastructure`` — ``dns_authorization_name``
+  and ``certificate_name`` are optional; when omitted, names include a
+  slugified ``server_name`` suffix.
+- ``IngressGCPGateway.check_infrastructure`` — requires ``server_name``;
+  optional ``certificate_name`` uses the same slugified default as
+  ``create_infrastructure``.
+
+
 ## [0.0.3] - 2026-07-14
 ### Added
 - Initial satellite package for Pumpwood GKE Gateway ingress on

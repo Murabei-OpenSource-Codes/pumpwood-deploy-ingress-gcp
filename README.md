@@ -9,6 +9,32 @@ for apply.
 
 Developed by [Murabei Data Science](https://murabei.com). BSD-3-Clause.
 
+## Objective and motivation
+
+Satellite Python package that renders GKE Gateway API manifests and
+optional ``gcloud`` helpers so Pumpwood stacks get a regional external
+HTTPS entrypoint on Google Cloud.
+
+### Why this exists
+
+Pumpwood needs TLS at the Google L7 load balancer without
+``ManagedCertificate`` (unsupported by the GKE Gateway controller).
+Certificate Manager plus Gateway API covers TLS termination and
+HTTP-to-HTTPS redirect while NGINX still handles CORS and headers.
+
+### How it is used
+
+Platform engineers add ``IngressGCPGateway`` to a
+``DeployPumpWood`` project after ``ApiGatewayNoCertificate``. One-time
+GCP setup uses ``create_infrastructure`` and ``check_infrastructure``;
+manifests apply with the rest of the deploy bundle.
+
+### Scope
+
+Owns Gateway, HTTPRoute, and ``HealthCheckPolicy`` templates and
+Certificate Manager bootstrap scripts. Kong, RabbitMQ, and NGINX
+gateway images live in sibling ``pumpwood-deploy*`` packages.
+
 <p align="center" width="60%">
   <img src="static_doc/sitelogo-horizontal.png" /> <br>
 
@@ -108,20 +134,20 @@ propagation before applying the Gateway.
 ```python
 from pumpwood_deploy_ingress_gcp import IngressGCPGateway
 
+# Omit dns_authorization_name and certificate_name to get per-host
+# defaults: ingress-gcp-gateway-dns-auth--{slug} and
+# ingress-gcp-gateway-certificate--{slug} (slug = slugified server_name).
 IngressGCPGateway.create_infrastructure(
     region="southamerica-east1",
     project_id="my-gcp-project",
     server_name="app.example.com",
     cluster_name="my-gke-cluster",
-    network_name="default",
-    dns_authorization_name="ingress-gcp-gateway-dns-auth",
-    certificate_name="ingress-gcp-gateway-certificate",
 )
 
 IngressGCPGateway.check_infrastructure(
     region="southamerica-east1",
     project_id="my-gcp-project",
-    certificate_name="ingress-gcp-gateway-certificate",
+    server_name="app.example.com",
 )
 ```
 
@@ -153,7 +179,8 @@ deploy.add_microservice(
         server_name="app.example.com",
         public_ip_name="pumpwood-gateway-ip",
         target_service="apigateway-nginx",
-        certificate_name="ingress-gcp-gateway-certificate",
+        # Must match the Certificate Manager name created in step 1.
+        certificate_name="ingress-gcp-gateway-certificate--app-example-com",
         health_check_path="/health-check/pumpwood-auth-app/",
     ))
 
@@ -193,8 +220,8 @@ no changes — safe for rolling image updates.
 | `server_name` | Yes | — | DNS hostname for certificate authorization |
 | `cluster_name` | Yes | — | GKE cluster to enable Gateway API on |
 | `network_name` | No | `default` | VPC network for the proxy subnet |
-| `dns_authorization_name` | No | `ingress-gcp-gateway-dns-auth` | Certificate Manager DNS auth name |
-| `certificate_name` | No | `ingress-gcp-gateway-certificate` | Regional certificate name to create |
+| `dns_authorization_name` | No | `ingress-gcp-gateway-dns-auth--{slugified server_name}` | Certificate Manager DNS auth name |
+| `certificate_name` | No | `ingress-gcp-gateway-certificate--{slugified server_name}` | Regional certificate name to create |
 
 ### `IngressGCPGateway.check_infrastructure` (classmethod)
 
@@ -202,7 +229,8 @@ no changes — safe for rolling image updates.
 |-----------|----------|---------|-------------|
 | `region` | Yes | — | GCP region of the certificate |
 | `project_id` | Yes | — | GCP project ID |
-| `certificate_name` | No | `ingress-gcp-gateway-certificate` | Certificate to describe |
+| `server_name` | Yes | — | Hostname used to derive the default certificate name |
+| `certificate_name` | No | `ingress-gcp-gateway-certificate--{slugified server_name}` | Certificate to describe |
 
 ---
 
