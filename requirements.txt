@@ -1,0 +1,5 @@
+pumpwood-deploy
+python-slugify
+diskcache
+pdoc
+orjson
