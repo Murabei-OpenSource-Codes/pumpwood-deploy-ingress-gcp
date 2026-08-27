@@ -3,7 +3,9 @@
 This module builds GKE Gateway API manifests for Pumpwood stacks on a
 regional external managed load balancer. TLS termination uses a regional
 Certificate Manager certificate referenced via
-``networking.gke.io/cert-manager-certs``. HTTP-to-HTTPS redirect is
+``networking.gke.io/cert-manager-certs``. A regional RESTRICTED SSL
+policy is attached via ``GCPGatewayPolicy`` to disable weak ciphers
+such as 3DES (Sweet32 / CVE-2016-2183). HTTP-to-HTTPS redirect is
 handled by the HTTPRoute.
 
 Create a regional Google-managed Certificate Manager certificate in
@@ -63,14 +65,25 @@ infrastructure__allow_gateway_k8s_api = resources\
     .files('pumpwood_deploy_ingress_gcp')\
     .joinpath('resources/bash__allow_gateway_k8s_api.bash')\
     .read_text(encoding='utf-8')
+infrastructure__create_ssl_policy = resources\
+    .files('pumpwood_deploy_ingress_gcp')\
+    .joinpath('resources/bash__create_ssl-policy.bash')\
+    .read_text(encoding='utf-8')
+infrastructure__check_ssl_policy = resources\
+    .files('pumpwood_deploy_ingress_gcp')\
+    .joinpath('resources/bash__check_ssl-policy.bash')\
+    .read_text(encoding='utf-8')
 
 
 class IngressGCPGateway(BasePumpwoodDeployMicroservice):
     """Deploy GKE regional Gateway ingress with Certificate Manager TLS.
 
-    Renders a Gateway and HTTPRoute pair. HTTPS termination uses a
-    regional Certificate Manager certificate that must already exist in
-    the same GCP project and region as the Gateway.
+    Renders a Gateway, HTTPRoutes, GCPGatewayPolicy, and
+    HealthCheckPolicy. HTTPS termination uses a regional Certificate
+    Manager certificate that must already exist in the same GCP project
+    and region as the Gateway. The project-wide SSL policy
+    ``SSL_POLICY_NAME`` disables weak ciphers such as 3DES on
+    client-to-load-balancer traffic.
 
     Pair with ``ApiGatewayNoCertificate`` so the Gateway routes traffic
     to the NGINX service that adds CORS and security headers.
@@ -95,6 +108,9 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
             ))
         ```
     """
+    SSL_POLICY_NAME = "gateway-ssl-policy-restricted"
+    """Regional SSL policy name shared across the GCP project."""
+
     def __init__(self, server_name: str, public_ip_name: str,
                  target_service: str = "apigateway-nginx",
                  certificate_name: str | None = None,
@@ -122,7 +138,6 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
         self.server_name = server_name
         self.public_ip_name = public_ip_name
         self.target_service = target_service
-        self.certificate_name = certificate_name
         self.health_check_path = health_check_path
         if certificate_name is None:
             self.certificate_name = \
@@ -135,14 +150,16 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
 
         Returns:
             list[PumpwoodDeploy]:
-                Deployment ``ingress_gcp_gateway__gateway`` with Gateway
-                and HTTPRoute resources.
+                Deployment ``ingress_gcp_gateway__gateway`` with Gateway,
+                GCPGatewayPolicy, HTTPRoute, and HealthCheckPolicy
+                resources.
         """
         gateway__formatted = deploy__gateway.format(
             server_name=self.server_name,
             public_ip_name=self.public_ip_name,
             target_service=self.target_service,
             certificate_name=self.certificate_name,
+            ssl_policy_name=self.SSL_POLICY_NAME,
             health_check_path=self.health_check_path)
 
         return [
@@ -208,6 +225,12 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
             project_id=project_id)
         _run_bash_script(allow_gateway_script)
 
+        ssl_policy_script = infrastructure__create_ssl_policy.format(
+            region=region,
+            project_id=project_id,
+            ssl_policy_name=cls.SSL_POLICY_NAME)
+        _run_bash_script(ssl_policy_script)
+
         certificate_script = infrastructure__create_certificate.format(
             region=region,
             project_id=project_id,
@@ -245,6 +268,12 @@ class IngressGCPGateway(BasePumpwoodDeployMicroservice):
         """
         if certificate_name is None:
             certificate_name = cls.get_certificate_name(server_name)
+
+        check_ssl_policy_script = infrastructure__check_ssl_policy.format(
+            region=region,
+            project_id=project_id,
+            ssl_policy_name=cls.SSL_POLICY_NAME)
+        _run_bash_script(check_ssl_policy_script)
 
         check_certificate_script = (
             infrastructure__check_certificate.format(
