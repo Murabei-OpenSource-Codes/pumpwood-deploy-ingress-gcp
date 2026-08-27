@@ -13,7 +13,7 @@ Developed by [Murabei Data Science](https://murabei.com). BSD-3-Clause.
 
 Satellite Python package that renders GKE Gateway API manifests and
 optional ``gcloud`` helpers so Pumpwood stacks get a regional external
-HTTPS entrypoint on Google Cloud.
+HTTPS entrypoint on Google Cloud with a RESTRICTED SSL policy.
 
 ### Why this exists
 
@@ -21,6 +21,8 @@ Pumpwood needs TLS at the Google L7 load balancer without
 ``ManagedCertificate`` (unsupported by the GKE Gateway controller).
 Certificate Manager plus Gateway API covers TLS termination and
 HTTP-to-HTTPS redirect while NGINX still handles CORS and headers.
+A RESTRICTED SSL policy disables weak ciphers such as 3DES on
+client-to-load-balancer traffic.
 
 ### How it is used
 
@@ -31,9 +33,10 @@ manifests apply with the rest of the deploy bundle.
 
 ### Scope
 
-Owns Gateway, HTTPRoute, and ``HealthCheckPolicy`` templates and
-Certificate Manager bootstrap scripts. Kong, RabbitMQ, and NGINX
-gateway images live in sibling ``pumpwood-deploy*`` packages.
+Owns Gateway, HTTPRoute, ``GCPGatewayPolicy``, and
+``HealthCheckPolicy`` templates plus Certificate Manager and SSL
+policy bootstrap scripts. Kong, RabbitMQ, and NGINX gateway images
+live in sibling ``pumpwood-deploy*`` packages.
 
 <p align="center" width="60%">
   <img src="static_doc/sitelogo-horizontal.png" /> <br>
@@ -49,7 +52,7 @@ gateway images live in sibling ``pumpwood-deploy*`` packages.
 
 | Class | Role |
 |-------|------|
-| `IngressGCPGateway` | GKE regional Gateway ingress with Certificate Manager TLS |
+| `IngressGCPGateway` | GKE regional Gateway ingress with Certificate Manager TLS and RESTRICTED SSL policy |
 
 ### Manifests produced
 
@@ -57,12 +60,13 @@ gateway images live in sibling ``pumpwood-deploy*`` packages.
 
 | Manifest | Kubernetes resources |
 |----------|----------------------|
-| `ingress_gcp_gateway__gateway` | Gateway `ingress-gcp-gateway`, HTTPRoutes for redirect and app traffic, `HealthCheckPolicy` |
+| `ingress_gcp_gateway__gateway` | Gateway `ingress-gcp-gateway`, `GCPGatewayPolicy`, HTTPRoutes for redirect and app traffic, `HealthCheckPolicy` |
 
 TLS terminates at the GKE L7 regional external managed load balancer
 using a regional Certificate Manager certificate referenced via
-``networking.gke.io/cert-manager-certs``. HTTP requests are redirected
-to HTTPS by an HTTPRoute filter.
+``networking.gke.io/cert-manager-certs``. A ``GCPGatewayPolicy``
+attaches the project SSL policy ``gateway-ssl-policy-restricted``.
+HTTP requests are redirected to HTTPS by an HTTPRoute filter.
 
 ```mermaid
 flowchart LR
@@ -98,6 +102,9 @@ On GCP you also need:
 - DNS ``A`` record pointing ``server_name`` to that IP
 - A **regional Certificate Manager certificate** in the same project
   and region (create with ``IngressGCPGateway.create_infrastructure``)
+- A **regional RESTRICTED SSL policy**
+  ``gateway-ssl-policy-restricted`` (created by
+  ``create_infrastructure``; attached via ``GCPGatewayPolicy``)
 - A **regional managed proxy subnet** on the VPC (created by
   ``create_infrastructure``)
 - **Gateway API** enabled on the GKE cluster (``--gateway-api=standard``,
@@ -135,8 +142,9 @@ propagation before applying the Gateway.
 from pumpwood_deploy_ingress_gcp import IngressGCPGateway
 
 # Omit dns_authorization_name and certificate_name to get per-host
-# defaults: ingress-gcp-gateway-dns-auth--{slug} and
-# ingress-gcp-gateway-certificate--{slug} (slug = slugified server_name).
+# defaults: gateway-dns-auth--{slug} and
+# gateway-certificate--{slug} (slug = slugified server_name).
+# Also creates SSL policy gateway-ssl-policy-restricted.
 IngressGCPGateway.create_infrastructure(
     region="southamerica-east1",
     project_id="my-gcp-project",
@@ -152,7 +160,7 @@ IngressGCPGateway.check_infrastructure(
 ```
 
 Repeat ``check_infrastructure`` until the certificate state is
-``ACTIVE``.
+``ACTIVE`` (SSL policy status is printed first).
 
 ### Step 2 — Deploy NGINX gateway and Gateway ingress
 
@@ -179,8 +187,9 @@ deploy.add_microservice(
         server_name="app.example.com",
         public_ip_name="pumpwood-gateway-ip",
         target_service="apigateway-nginx",
-        # Must match the Certificate Manager name created in step 1.
-        certificate_name="ingress-gcp-gateway-certificate--app-example-com",
+        # Omit to use gateway-certificate--{slugified server_name}.
+        # Or set explicitly to match create_infrastructure:
+        certificate_name="gateway-certificate--app-example-com",
         health_check_path="/health-check/pumpwood-auth-app/",
     ))
 
@@ -208,10 +217,17 @@ no changes — safe for rolling image updates.
 | `server_name` | Yes | — | DNS hostname for Gateway HTTPRoutes |
 | `public_ip_name` | Yes | — | GCP reserved external IP name (`NamedAddress`) |
 | `target_service` | No | `apigateway-nginx` | Kubernetes Service for HTTPS routing |
-| `certificate_name` | No | `ingress-gcp-gateway-certificate` | Regional Certificate Manager cert name |
+| `certificate_name` | No | `gateway-certificate--{slugified server_name}` | Regional Certificate Manager cert name |
 | `health_check_path` | No | `/health-check/pumpwood-auth-app/` | Gateway health check request path |
 
+Class constant ``SSL_POLICY_NAME`` =
+``gateway-ssl-policy-restricted`` (used by manifests and
+infrastructure scripts; not a constructor argument).
+
 ### `IngressGCPGateway.create_infrastructure` (classmethod)
+
+Creates proxy subnet, enables Gateway API, creates the RESTRICTED
+SSL policy, then provisions the Certificate Manager certificate.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
@@ -220,17 +236,19 @@ no changes — safe for rolling image updates.
 | `server_name` | Yes | — | DNS hostname for certificate authorization |
 | `cluster_name` | Yes | — | GKE cluster to enable Gateway API on |
 | `network_name` | No | `default` | VPC network for the proxy subnet |
-| `dns_authorization_name` | No | `ingress-gcp-gateway-dns-auth--{slugified server_name}` | Certificate Manager DNS auth name |
-| `certificate_name` | No | `ingress-gcp-gateway-certificate--{slugified server_name}` | Regional certificate name to create |
+| `dns_authorization_name` | No | `gateway-dns-auth--{slugified server_name}` | Certificate Manager DNS auth name |
+| `certificate_name` | No | `gateway-certificate--{slugified server_name}` | Regional certificate name to create |
 
 ### `IngressGCPGateway.check_infrastructure` (classmethod)
+
+Describes the SSL policy, then the certificate until ``ACTIVE``.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `region` | Yes | — | GCP region of the certificate |
 | `project_id` | Yes | — | GCP project ID |
 | `server_name` | Yes | — | Hostname used to derive the default certificate name |
-| `certificate_name` | No | `ingress-gcp-gateway-certificate--{slugified server_name}` | Certificate to describe |
+| `certificate_name` | No | `gateway-certificate--{slugified server_name}` | Certificate to describe |
 
 ---
 
